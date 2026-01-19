@@ -3,18 +3,12 @@ from groq import Groq
 import os
 from dotenv import load_dotenv
 
-# =========================
-# Page Configuration
-# =========================
 st.set_page_config(
     page_title="AI Study Buddy",
     page_icon="📘",
     layout="centered"
 )
 
-# =========================
-# Load API Key
-# =========================
 load_dotenv()
 client = Groq(api_key=os.getenv("GROQ_API_KEY"))
 
@@ -31,9 +25,6 @@ def get_ai_response(prompt):
     except Exception as e:
         return f"⚠️ AI Error: {str(e)}"
 
-# =========================
-# Prompts
-# =========================
 def explanation_prompt(topic):
     return f"""
 You are an AI study tutor.
@@ -68,9 +59,6 @@ Give short feedback.
 Encourage the student.
 """
 
-# =========================
-# UI
-# =========================
 st.markdown(
     """
     <h1 style='text-align: center;'>📘 AI Study Buddy</h1>
@@ -90,9 +78,6 @@ topic = st.text_input(
 
 start = st.button("🚀 Start Learning", use_container_width=True)
 
-# =========================
-# Explanation + Quiz
-# =========================
 if start:
     if topic.strip() == "":
         st.error("Please enter a topic")
@@ -109,25 +94,12 @@ if start:
         st.markdown("### 📝 Quiz")
         st.warning(quiz)
 
-# =========================
-# Answers + Feedback
-# =========================
 if "quiz" in st.session_state:
     st.markdown("### ✍️ Your Answers")
 
-    a1 = st.radio("Question 1", ["A", 
-                                 "B", 
-                                 "C", 
-                                 "D"], horizontal=True)
-    a2 = st.radio("Question 2", ["A", 
-                                 "B", 
-                                 "C", 
-                                 "D"], horizontal=True)
-    a3 = st.radio("Question 3", ["A", 
-                                 "B",
-                                   "C",
-                                     "D"], horizontal=True)
-
+    a1 = st.radio("Question 1", ["A","B","C","D"], horizontal=True)
+    a2 = st.radio("Question 2", ["A","B","C","D"], horizontal=True)
+    a3 = st.radio("Question 3", ["A","B","C","D"], horizontal=True)
     submit = st.button("✅ Submit Answers", use_container_width=True)
 
     if submit:
@@ -143,3 +115,4 @@ if "quiz" in st.session_state:
 
         st.markdown("### 📊 Feedback")
         st.success(feedback)
+
