@@ -1,7 +1,6 @@
 import streamlit as st
 from groq import Groq
-import os
-from dotenv import load_dotenv
+import json
 
 st.set_page_config(
     page_title="AI Study Buddy",
@@ -9,110 +8,181 @@ st.set_page_config(
     layout="centered"
 )
 
-load_dotenv()
-client = Groq(api_key=os.getenv("GROQ_API_KEY"))
+st.title("📘 AI Study Buddy")
+st.caption("Your personal AI tutor to explain concepts, test understanding, and give feedback.")
 
-MODEL = "llama-3.1-8b-instant"
+client = Groq(api_key=st.secrets["GROQ_API_KEY"])
 
-def get_ai_response(prompt):
+if "topic" not in st.session_state:
+    st.session_state.topic = ""
+
+if "explanation" not in st.session_state:
+    st.session_state.explanation = ""
+
+if "quiz" not in st.session_state:
+    st.session_state.quiz = []
+
+if "current_q" not in st.session_state:
+    st.session_state.current_q = 0
+
+if "answers" not in st.session_state:
+    st.session_state.answers = []
+
+if "feedback" not in st.session_state:
+    st.session_state.feedback = ""
+
+
+def generate_explanation(topic):
+    prompt = f"""
+Explain the topic "{topic}" in a detailed and structured manner suitable for a computer science student.
+
+Include:
+- Definition
+- Core concepts
+- Examples
+- Advantages and limitations
+- Use cases
+"""
+
+    response = client.chat.completions.create(
+        model="llama-3.1-8b-instant",
+        messages=[
+            {"role": "system", "content": "You are an expert academic tutor."},
+            {"role": "user", "content": prompt}
+        ]
+    )
+    return response.choices[0].message.content
+
+
+def generate_quiz(explanation):
+    prompt = f"""
+Generate EXACTLY 3 multiple-choice questions based ONLY on the explanation below.
+
+STRICT RULES:
+- Output ONLY valid JSON
+- Do NOT add explanations, markdown, or text
+- Do NOT wrap in ``` or any formatting
+- JSON must start with [ and end with ]
+
+Format:
+[
+  {{
+    "question": "Question text",
+    "options": ["Option A", "Option B", "Option C", "Option D"],
+    "answer": "Correct option text"
+  }}
+]
+
+Explanation:
+{explanation}
+"""
+
+    response = client.chat.completions.create(
+        model="llama-3.1-8b-instant",
+        messages=[
+            {"role": "system", "content": "You are a strict JSON generator."},
+            {"role": "user", "content": prompt}
+        ]
+    )
+
+    raw_output = response.choices[0].message.content.strip()
+
     try:
-        response = client.chat.completions.create(
-            model=MODEL,
-            messages=[{"role": "user", "content": prompt}],
-            temperature=0.5
-        )
-        return response.choices[0].message.content
-    except Exception as e:
-        return f"⚠️ AI Error: {str(e)}"
+        return json.loads(raw_output)
+    except json.JSONDecodeError:
+        st.error("⚠️ AI failed to generate quiz questions. Please click Start Learning again.")
+        return []
 
-def explanation_prompt(topic):
-    return f"""
-You are an AI study tutor.
-Explain the topic "{topic}" in simple terms for a beginner.
-Use short paragraphs.
+
+
+def generate_feedback(topic, quiz, user_answers):
+    prompt = f"""
+Topic: {topic}
+
+Quiz details:
+{quiz}
+
+User answers:
+{user_answers}
+
+Give constructive feedback with strengths, weaknesses, and improvement tips.
 """
 
-def quiz_prompt(topic):
-    return f"""
-Generate exactly 3 quiz questions on "{topic}".
+    response = client.chat.completions.create(
+        model="llama-3.1-8b-instant",
+        messages=[
+            {"role": "system", "content": "You are a supportive academic mentor."},
+            {"role": "user", "content": prompt}
+        ]
+    )
+    return response.choices[0].message.content
 
-Rules:
-- Only show the questions
-- If multiple-choice, show options A, B, C, D
-- DO NOT show answers
-- DO NOT give hints
-"""
 
-def evaluation_prompt(questions, answers):
-    return f"""
-You are a kind tutor.
+topic = st.text_input("Enter a topic to learn:")
 
-Quiz Questions:
-{questions}
-
-Student Answers:
-{answers}
-
-Evaluate each answer.
-Say Correct or Incorrect.
-Give short feedback.
-Encourage the student.
-"""
-
-st.markdown(
-    """
-    <h1 style='text-align: center;'>📘 AI Study Buddy</h1>
-    <p style='text-align: center; font-size:18px;'>
-    Your personal AI tutor for learning, quizzes, and feedback
-    </p>
-    <hr>
-    """,
-    unsafe_allow_html=True
-)
-
-st.subheader("📚 Start Learning")
-topic = st.text_input(
-    "Enter a topic",
-    placeholder="e.g., Data Structure, Python, Machine Learning"
-)
-
-start = st.button("🚀 Start Learning", use_container_width=True)
-
-if start:
+if st.button("🚀 Start Learning"):
     if topic.strip() == "":
-        st.error("Please enter a topic")
+        st.warning("Please enter a valid topic.")
     else:
-        with st.spinner("Thinking..."):
-            explanation = get_ai_response(explanation_prompt(topic))
-            quiz = get_ai_response(quiz_prompt(topic))
+        st.session_state.topic = topic
+        st.session_state.explanation = generate_explanation(topic)
+        st.session_state.quiz = generate_quiz(st.session_state.explanation)
+        st.session_state.current_q = 0
+        st.session_state.answers = []
+        st.session_state.feedback = ""
 
-        st.session_state.quiz = quiz
 
-        st.markdown("### 📖 Explanation")
-        st.info(explanation)
+if st.session_state.explanation:
+    st.subheader("📖 Explanation")
+    st.markdown(st.session_state.explanation)
 
-        st.markdown("### 📝 Quiz")
-        st.warning(quiz)
 
-if "quiz" in st.session_state:
-    st.markdown("### ✍️ Your Answers")
+if st.session_state.quiz and st.session_state.current_q < len(st.session_state.quiz):
 
-    a1 = st.radio("Question 1", ["A","B","C","D"], horizontal=True)
-    a2 = st.radio("Question 2", ["A","B","C","D"], horizontal=True)
-    a3 = st.radio("Question 3", ["A","B","C","D"], horizontal=True)
-    submit = st.button("✅ Submit Answers", use_container_width=True)
+    q = st.session_state.quiz[st.session_state.current_q]
 
-    if submit:
-        answers = f"""
-1. {a1}
-2. {a2}
-3. {a3}
-"""
-        with st.spinner("Evaluating your answers..."):
-            feedback = get_ai_response(
-                evaluation_prompt(st.session_state.quiz, answers)
-            )
+    st.subheader(f"📝 Question {st.session_state.current_q + 1}")
+    st.write(q["question"])
 
-        st.markdown("### 📊 Feedback")
-        st.success(feedback)
+    selected = st.radio(
+        "Choose your answer:",
+        q["options"],
+        index=None,
+        key=f"q_{st.session_state.current_q}"
+    )
 
+    if st.button("Submit Answer"):
+        if selected is None:
+            st.warning("Please select an option.")
+        else:
+            
+            selected_clean = selected.strip().lower()
+            correct_clean = q["answer"].strip().lower()
+
+            st.session_state.answers.append({
+                "question": q["question"],
+                "selected": selected,
+                "correct": q["answer"]
+            })
+
+            if selected_clean == correct_clean:
+                st.success("✅ Correct!")
+            else:
+                st.error(f"❌ Incorrect. Correct answer: {q['answer']}")
+
+            st.session_state.current_q += 1
+            st.rerun()
+
+
+if st.session_state.quiz and st.session_state.current_q >= len(st.session_state.quiz):
+
+    if not st.session_state.feedback:
+        st.session_state.feedback = generate_feedback(
+            st.session_state.topic,
+            st.session_state.quiz,
+            st.session_state.answers
+        )
+
+    st.subheader("📊 Feedback")
+    st.markdown(st.session_state.feedback)
+    st.success("🎉 Quiz completed! Keep learning 🚀")
